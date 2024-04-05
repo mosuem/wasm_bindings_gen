@@ -7,18 +7,18 @@ import 'package:wasmi/parse.dart';
 import 'package:wasmi/types.dart';
 
 void main(List<String> args) {
-  var fileName = args.first;
-  var definition = ModuleDefinition.parse(File(fileName));
+  final fileName = args.first;
+  final definition = ModuleDefinition.parse(File(fileName));
 
   final functions = definition.exportedFunctions.map(
-    (e) {
-      var functionType = e.func.functionType;
+    (function) {
+      final functionType = function.func.functionType;
       if (functionType != null) {
-        var list = functionType.parameterTypes;
+        final list = functionType.parameterTypes;
         final parameters = List.generate(
           list.length,
           (index) => Parameter(
-            (p0) => p0
+            (pb) => pb
               ..name = 'p$index'
               ..type = Reference(list[index].toDartType()),
           ),
@@ -32,14 +32,13 @@ void main(List<String> args) {
           resultType = '(${functionType.resultTypes.join(',')})';
         }
         return Method(
-          (p0) => p0
-            ..name = e.name
-            ..static = true
+          (mb) => mb
+            ..name = function.name
             ..requiredParameters.addAll(parameters)
             ..returns = Reference(resultType)
             ..lambda = true
             ..body = Code('''
-module.invoke('${e.name}', ${parameters.map((e) => e.name).toList()})
+module.invoke('${function.name}', ${parameters.map((e) => e.name).toList()}) as $resultType
 '''),
         );
       }
@@ -48,13 +47,30 @@ module.invoke('${e.name}', ${parameters.map((e) => e.name).toList()})
   final className = args.length > 1
       ? args[1]
       : path.basenameWithoutExtension(fileName).capitalize();
-  var c = Class(
-    (p0) => p0
+  final c = Class(
+    (cb) => cb
       ..name = className
+      ..fields.add(Field(
+        (fb) => fb
+          ..name = 'module'
+          ..type = Reference('Module')
+          ..modifier = FieldModifier.final$,
+      ))
+      ..constructors.add(Constructor(
+        (conb) => conb.requiredParameters.add(Parameter(
+          (pb) => pb
+            ..name = 'module'
+            ..toThis = true,
+        )),
+      ))
       ..methods.addAll(functions.whereType()),
   );
-  var l = Library(
-    (p0) => p0.body.add(c),
+  final l = Library(
+    (lb) => lb
+      ..body.add(c)
+      ..directives.add(
+        Directive.import('package:wasmi/execute.dart'),
+      ),
   );
   final emitter = DartEmitter();
   print(DartFormatter().format('${l.accept(emitter)}'));
